@@ -10,7 +10,7 @@
 
 typedef struct tabela_goif{//tabela onde será gravada a ocorrencia de go ou ifs
 
-	int poscod; // posição no vetor de codigo onde se encontra o primeiro byte do go ou if
+	int poscod ; // posição no vetor de codigo onde se encontra o primeiro byte do go ou if
 	int go; //flag para saber se é go ou if, se for go é 1, se for if é 0
 	int linha_n1;//linha n para onde o go quer ir ou n1 do if
 	int linha_n2;// n2 do if
@@ -39,7 +39,65 @@ static void error (const char *msg, int line){
 	fprintf(stderr, "erro %s na linha %d\n",msg,line);
 	exit(EXIT_FAILURE);
 }
-
+void preenche_if(unsigned char *codigo,Tabela_goif x, int * tam_instr){
+	unsigned char *cod = &codigo[x.poscod];
+	int distancia_n1=0,distancia_n2=0,i;
+	
+	cod[0]= 0x83;	
+	if(x.var == 'p'){ //analisando parametro
+		cod[1] = x.id == 1? 0xff : 0xfe;
+		cod[2] = 0x00;
+		unsigned char v[3] ={cod[0],cod[1],cod[2]}; 
+	}
+	else{ //analisando variavel
+		cod[1] = 0x7d;
+		cod[3] = 0x00;
+		
+		switch(x.id){
+			case 1:{
+				cod[2] = 0xfc;
+				break;
+			}
+			case 2:{
+				cod[2] = 0xf8;
+				break;
+			}
+			case 3:{
+				cod[2] = 0xf4;
+				break;
+			}
+			case 4:{
+				cod[2] = 0xf0;
+				break;
+			}
+		}
+		unsigned char v[4] ={cod[0],cod[1],cod[2],cod[3]};
+	}
+	// se for je pra perto x[4] = 74 se for pra longe x[4] = 0f e x[5] = 84
+	if(x.linha_n2>x.linha_intr){// n2 está depois do if
+		for(i=x.linha_intr;i<x.linha_n2-1;i++){
+			distancia_n2+=tam_instr[i];
+		}
+		if(distancia<127){// short je positivo
+			cod[4] = 0x74;
+			cod[5] = (unsigned char) distancia;
+		}
+		else{// long je positivo
+			cod[4] = 0x0f;
+			cod[5] = 0x84;
+			cod[6] = (unsigned char) distancia;
+			cod[7] = 0x00;
+			cod[8] = 0x00;
+			cod[9] = 0x00;
+		}
+	}
+	else{//n2 está antes do if
+		for(i=x.linha_n2-1;i<x.linha_intr-1;i++){
+			distancia_n2+=tam_intr[i];
+		}
+	}
+	memcpy(cod+10,v,sizeof(v));
+}
 void preenche_cte(int cte , unsigned char *v){
 		int i;	
 		for(i=0;i<4;i++){
@@ -78,7 +136,7 @@ void desvio_incondicional(unsigned char *cod, int line,int *tamanho_instrucao){
 			memcpy(cod+1,shrt,sizeof(shrt));
 			*(cod+4) = (unsigned char) distancia;
 		}
-		else if(distancia){//short longo
+		else if(distancia){//long jump
 			//printf(" long jmp positivo\n");
 			*cod = 0xe9;
 			
@@ -275,8 +333,8 @@ funcp geracod(FILE *myfp){
 	unsigned char prologo[8]  = {0x55,0x48,0x89,0xe5,0x48,0x83,0xec,0x10};
 	unsigned char epilogo[2]  = {0xc9,0xc3 };
 	unsigned char desvinc[3]  = {0x00,0x00,0x00};
-	unsigned char jmpvazio[5] = {0x00,0x00,0x00,0x00,0x00,};
-	unsigned char ifvazio[]
+	unsigned char govazio[5]  = {0x00,0x00,0x00,0x00,0x00,};
+	unsigned char ifvazio[21];
 	unsigned char retv[2]     = {0x8b,0x45};
 	unsigned char retv1[1]    = {0xfc};
 	unsigned char retv2[1]    = {0xf8};
@@ -293,7 +351,7 @@ funcp geracod(FILE *myfp){
 	int goifs=0;
 	codigo = (unsigned char*)malloc(MAX_BYTES);
 	tamanho_instrucao = (int*)malloc(MAX_LINHAS);
-	tbl = (int*)malloc(MAX_LINHAS);
+	tbl = (Tabela_goif*)malloc(MAX_LINHAS*sizeof(Tabela_goif));
 	if(codigo==NULL){
 		fprintf(stderr, "Falta de memória ao alocar bloco de codigo\n");
 		exit(0);
@@ -301,6 +359,12 @@ funcp geracod(FILE *myfp){
 	if(tamanho_instrucao==NULL){
 		fprintf(stderr, "Falta de memória ao alocar tamanho das intruçoes\n");
 		exit(0);
+	}
+	for(i=0;i<21;i++){
+		ifvazio[i] = 0x00;
+	}
+	for(i=0;i<MAX_LINHAS;i++){
+		tbl[i].poscod = 0;
 	}
 	memcpy(codigo,prologo,sizeof(prologo));
 	byte_corrente += sizeof(prologo);
@@ -400,6 +464,16 @@ funcp geracod(FILE *myfp){
 				if(fscanf(myfp, "f %c%d %d %d", &var0, &idx0, &n1, &n2) != 4)
 					error("comando invalido", line);
 				printf("%d if %c%d %d %d\n", line, var0, idx0, n1, n2);
+				memcpy(codigo+byte_corrente,ifvazio,sizeof(ifvazio));
+				//tbl[goifs] = {byte_corrente,0,n1,n2,line,var0,idx0};
+				tbl[goifs].poscod = byte_corrente;
+				tbl[goifs].go = 0;
+				tbl[goifs].linha_n1 = n1;
+				tbl[goifs].linha_n2 = n2;
+				tbl[goifs].linha_intr=line;
+				tbl[goifs].var = var0;
+				tbl[goifs].id = idx0;				
+				goifs++;
 				break;
 
 			}
@@ -407,7 +481,6 @@ funcp geracod(FILE *myfp){
 				int n1;
 				if(fscanf(myfp, "o %d", &n1) != 1)
 					error("comando invalido", line);
-				
 				codigo[byte_corrente] = 0xeb;
 				byte_corrente++;
 				codigo[byte_corrente] = (unsigned char) n1;
@@ -431,12 +504,20 @@ funcp geracod(FILE *myfp){
 	//printf("testeeeeeeeeeeeeeeeeeeeeeeeee :%02x\n",cod[i]);
 		if(cod[i]== 0xeb){
 			//printf("testeeeeeeeeeeeeeeeeeeeeeeeee :%02x\n",cod[i]);
-			desvio_incondicional(&cod[i],i+1,tamanho_instrucao);
-			
-			
+			desvio_incondicional(&cod[i],i+1,tamanho_instrucao);	
 		}
 		cod+=(tamanho_instrucao[i]-1);
-		
+	}
+	for(i=0;i<goifs;i++){
+		if(tbl[i].poscod!=0){
+			printf("[%d,%d,%d,%d,%d,%c,%d\n",tbl[i].poscod,tbl[i].go,tbl[i].linha_n1,tbl[i].linha_n2,tbl[i].linha_intr,tbl[i].var,tbl[i].id);
+			if(tbl[i].go == 0){
+				preenche_if(codigo,tbl[i],tamanho_instrucao);
+			}
+			else{
+				//preenche_go(codigo,tbl[i].poscod,tbl[i].linha_intr,tbl[i].linha_n1);
+			}
+		}
 	}
 	printf("dump de codigo :%d\n",byte_corrente);
 	dump(codigo,byte_corrente);
