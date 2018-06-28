@@ -8,6 +8,18 @@
 #define MAX_LINHAS 20
 
 
+typedef struct tabela_goif{//tabela onde será gravada a ocorrencia de go ou ifs
+
+	int poscod; // posição no vetor de codigo onde se encontra o primeiro byte do go ou if
+	int go; //flag para saber se é go ou if, se for go é 1, se for if é 0
+	int linha_n1;//linha n para onde o go quer ir ou n1 do if
+	int linha_n2;// n2 do if
+	int linha_intr;//linha onde o if ou go é chamado 
+	char var;// o tipo do dado que queremos analisar no if(parametro ou variavel)
+	int id;// o numero do parameto ou variavel que queremos analisar no if
+
+}Tabela_goif;
+
 
 void dump (void *p, int n) {
   unsigned char *p1 = p;
@@ -18,9 +30,7 @@ void dump (void *p, int n) {
 }
 
 void liberacod(void *pf){
-
 	free(pf);
-
 } 
 
 
@@ -57,36 +67,46 @@ void desvio_incondicional(unsigned char *cod, int line,int *tamanho_instrucao){
 	unsigned char lngpos[3]={0x00,0x00,0x00};
 	unsigned char v[4];
 	if(linha_desvio>line){
-		for(i=line;i<linha_desvio;i++){// jump pra frente(positivo)
+		
+		printf("line = %d e linha desvio = %d\n",line,linha_desvio);
+		for(i=line;i<linha_desvio-1;i++){// jump pra frente(positivo)
 			distancia += tamanho_instrucao[i];
+			
 		}
 		if(distancia <= 126){// short jump
+			//printf(" short jmp positivo\n");
 			memcpy(cod+1,shrt,sizeof(shrt));
 			*(cod+4) = (unsigned char) distancia;
 		}
 		else if(distancia){//short longo
+			//printf(" long jmp positivo\n");
 			*cod = 0xe9;
+			
 			*(cod+1) = (unsigned char) distancia;
 			memcpy(cod+2,lngpos,sizeof(lngpos));  
 		}
 	}
 	else{
-		for(i=linha_desvio;i<line-1;i++){//jump para tras(negativo)
+		for(i=linha_desvio-1;i<line-1;i++){//jump para tras(negativo)
 			distancia += tamanho_instrucao[i];
-			
+			printf("distancia+= %d\n",tamanho_instrucao[i]);
 		}
 		distancia++;//contando o 0xeb
+		printf("distancia final = %d\n",distancia);
 		if(distancia <= 127){// short jump
+			distancia+=3;
+			printf(" short jmp negativo\n");
 			memcpy(cod+1,shrt,sizeof(shrt));
 			*(cod+4) = (unsigned char) 255-distancia;
 		}
 		else if(distancia){
+			//printf(" long jmp negativo\n");
 			*cod = 0xe9;
 			*(cod+1) = (unsigned char) 125 - (distancia - 127); 
 			memcpy(cod+2,lngneg,sizeof(lngneg)); 
 		}
 	}
-		
+	//printf("distancia = %d",distancia);	
 }
 
 void atribuicao(unsigned char *codigo,int *byte_corrente,char var0,int idx0,char var1, int idx1){
@@ -251,28 +271,29 @@ funcp geracod(FILE *myfp){
 	funcp f;
 	unsigned char *codigo,*cod;
 	int *tamanho_instrucao;
-
-	
-	
-	unsigned char prologo[8] = {0x55,0x48,0x89,0xe5,0x48,0x83,0xec,0x10};
-	unsigned char epilogo[2] = {0xc9,0xc3 };
-	unsigned char desvinc[3] = {0x00,0x00,0x00};
-	unsigned char retv[2]    = {0x8b,0x45};
-	unsigned char retv1[1]   = {0xfc};
-	unsigned char retv2[1]   = {0xf8};
-	unsigned char retv3[1]   = {0xf4};
-	unsigned char retv4[1]   = {0xf0};
-	unsigned char retp[1]    = {0x89};
-	unsigned char retp1[1]   = {0xf8};
-	unsigned char retp2[1]   = {0xf0};
-	unsigned char retcte[1]  = {0xb8};	
-	char *linha = (char*)malloc(MAX_TAM_INSTRUCAO);
+	Tabela_goif *tbl;
+	unsigned char prologo[8]  = {0x55,0x48,0x89,0xe5,0x48,0x83,0xec,0x10};
+	unsigned char epilogo[2]  = {0xc9,0xc3 };
+	unsigned char desvinc[3]  = {0x00,0x00,0x00};
+	unsigned char jmpvazio[5] = {0x00,0x00,0x00,0x00,0x00,};
+	unsigned char ifvazio[]
+	unsigned char retv[2]     = {0x8b,0x45};
+	unsigned char retv1[1]    = {0xfc};
+	unsigned char retv2[1]    = {0xf8};
+	unsigned char retv3[1]    = {0xf4};
+	unsigned char retv4[1]    = {0xf0};
+	unsigned char retp[1]     = {0x89};
+	unsigned char retp1[1]    = {0xf8};
+	unsigned char retp2[1]    = {0xf0};
+	unsigned char retcte[1]   = {0xb8};	
 	int byte_corrente = 0;
 	int line = 1;
 	int c;
 	int i;
+	int goifs=0;
 	codigo = (unsigned char*)malloc(MAX_BYTES);
 	tamanho_instrucao = (int*)malloc(MAX_LINHAS);
+	tbl = (int*)malloc(MAX_LINHAS);
 	if(codigo==NULL){
 		fprintf(stderr, "Falta de memória ao alocar bloco de codigo\n");
 		exit(0);
@@ -386,12 +407,13 @@ funcp geracod(FILE *myfp){
 				int n1;
 				if(fscanf(myfp, "o %d", &n1) != 1)
 					error("comando invalido", line);
+				
 				codigo[byte_corrente] = 0xeb;
 				byte_corrente++;
 				codigo[byte_corrente] = (unsigned char) n1;
 				byte_corrente++;
 				memcpy(codigo+byte_corrente,desvinc,sizeof(desvinc));
-				byte_corrente += sizeof(epilogo);
+				byte_corrente += sizeof(desvinc);
 				printf("%d go %d\n", line, n1);
 				break;
 			}
@@ -406,10 +428,10 @@ funcp geracod(FILE *myfp){
 	cod = codigo+sizeof(prologo);
 	
 	for(i=0;i<line;i++){
-	printf("testeeeeeeeeeeeeeeeeeeeeeeeee :%02x\n",cod[i]);
+	//printf("testeeeeeeeeeeeeeeeeeeeeeeeee :%02x\n",cod[i]);
 		if(cod[i]== 0xeb){
 			//printf("testeeeeeeeeeeeeeeeeeeeeeeeee :%02x\n",cod[i]);
-			desvio_incondicional(cod,i,tamanho_instrucao);
+			desvio_incondicional(&cod[i],i+1,tamanho_instrucao);
 			
 			
 		}
