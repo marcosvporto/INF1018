@@ -4,7 +4,7 @@
 
 
 #define MAX_BYTES 2000
-#define MAX_TAM_LINHA 200
+#define MAX_TAM_INSTRUCAO 200
 #define MAX_LINHAS 20
 
 
@@ -48,6 +48,47 @@ void retorno_de_constante(unsigned char *codigo,int *byte_corrente, int constant
 	
 
 }
+void desvio_incondicional(unsigned char *cod, int line,int *tamanho_instrucao){
+	int distancia = 0;
+	int linha_desvio = (int) *(cod+1);
+	int i;
+	unsigned char shrt[3]= {0x01,0xc3,0xeb};
+	unsigned char lngneg[3]={0xff,0xff,0xff};
+	unsigned char lngpos[3]={0x00,0x00,0x00};
+	unsigned char v[4];
+	if(linha_desvio>line){
+		for(i=line;i<linha_desvio;i++){// jump pra frente(positivo)
+			distancia += tamanho_instrucao[i];
+		}
+		if(distancia <= 126){// short jump
+			memcpy(cod+1,shrt,sizeof(shrt));
+			*(cod+4) = (unsigned char) distancia;
+		}
+		else if(distancia){//short longo
+			*cod = 0xe9;
+			*(cod+1) = (unsigned char) distancia;
+			memcpy(cod+2,lngpos,sizeof(lngpos));  
+		}
+	}
+	else{
+		for(i=linha_desvio;i<line-1;i++){//jump para tras(negativo)
+			distancia += tamanho_instrucao[i];
+			
+		}
+		distancia++;//contando o 0xeb
+		if(distancia <= 127){// short jump
+			memcpy(cod+1,shrt,sizeof(shrt));
+			*(cod+4) = (unsigned char) 255-distancia;
+		}
+		else if(distancia){
+			*cod = 0xe9;
+			*(cod+1) = (unsigned char) 125 - (distancia - 127); 
+			memcpy(cod+2,lngneg,sizeof(lngneg)); 
+		}
+	}
+		
+}
+
 void atribuicao(unsigned char *codigo,int *byte_corrente,char var0,int idx0,char var1, int idx1){
 /*
  * var0 é o tipo da variavel que receberá o dado e pode ser v ou p
@@ -65,11 +106,11 @@ void atribuicao(unsigned char *codigo,int *byte_corrente,char var0,int idx0,char
 			memcpy(codigo+*byte_corrente,cte2v,sizeof(cte2v));
 			
 			*byte_corrente+=sizeof(cte2v);
-			printf(" pos_cod = %d\n",*byte_corrente);
+			//printf(" pos_cod = %d\n",*byte_corrente);
  			if(idx0==1){//para v1
 				codigo[*byte_corrente] = 0xfc;
 				(*byte_corrente)++;
-				printf(" pos_cod = %d\n",*byte_corrente);
+				//printf(" pos_cod = %d\n",*byte_corrente);
 			}
 			else if(idx0==2){//para v2
 				codigo[*byte_corrente] = 0xf8;
@@ -208,13 +249,14 @@ void atribuicao(unsigned char *codigo,int *byte_corrente,char var0,int idx0,char
 
 funcp geracod(FILE *myfp){
 	funcp f;
-	unsigned char *codigo;
-	
+	unsigned char *codigo,*cod;
+	int *tamanho_instrucao;
 
 	
 	
 	unsigned char prologo[8] = {0x55,0x48,0x89,0xe5,0x48,0x83,0xec,0x10};
 	unsigned char epilogo[2] = {0xc9,0xc3 };
+	unsigned char desvinc[3] = {0x00,0x00,0x00};
 	unsigned char retv[2]    = {0x8b,0x45};
 	unsigned char retv1[1]   = {0xfc};
 	unsigned char retv2[1]   = {0xf8};
@@ -224,21 +266,28 @@ funcp geracod(FILE *myfp){
 	unsigned char retp1[1]   = {0xf8};
 	unsigned char retp2[1]   = {0xf0};
 	unsigned char retcte[1]  = {0xb8};	
-	char *linha = (char*)malloc(MAX_TAM_LINHA);
+	char *linha = (char*)malloc(MAX_TAM_INSTRUCAO);
 	int byte_corrente = 0;
 	int line = 1;
 	int c;
+	int i;
 	codigo = (unsigned char*)malloc(MAX_BYTES);
+	tamanho_instrucao = (int*)malloc(MAX_LINHAS);
 	if(codigo==NULL){
 		fprintf(stderr, "Falta de memória ao alocar bloco de codigo\n");
 		exit(0);
-	}	
+	}
+	if(tamanho_instrucao==NULL){
+		fprintf(stderr, "Falta de memória ao alocar tamanho das intruçoes\n");
+		exit(0);
+	}
 	memcpy(codigo,prologo,sizeof(prologo));
 	byte_corrente += sizeof(prologo);
 
 	
-	while ((c = fgetc(myfp)) != EOF ){
-		
+	while ( (c = fgetc(myfp)) != EOF ){
+		printf("byte_inicial = %d\n",byte_corrente);
+		int byte_inicial = byte_corrente;
 		switch(c){
 
 			
@@ -301,7 +350,7 @@ funcp geracod(FILE *myfp){
 				if(fscanf(myfp, "%d %c= %c%d", &idx0, &op, &var1, &idx1 ) != 4)
 					error("comando invalido", line);
 				switch(op){
-					case ':':{printf("chegou\n");
+					case ':':{
 						atribuicao(codigo,&byte_corrente,var0,idx0,var1,idx1);
 						break;
 					}
@@ -337,17 +386,37 @@ funcp geracod(FILE *myfp){
 				int n1;
 				if(fscanf(myfp, "o %d", &n1) != 1)
 					error("comando invalido", line);
+				codigo[byte_corrente] = 0xeb;
+				byte_corrente++;
+				codigo[byte_corrente] = (unsigned char) n1;
+				byte_corrente++;
+				memcpy(codigo+byte_corrente,desvinc,sizeof(desvinc));
+				byte_corrente += sizeof(epilogo);
 				printf("%d go %d\n", line, n1);
 				break;
 			}
 			default: error("comando desconhecido", line);
 
 		}
-		
+		tamanho_instrucao[line-1] = byte_corrente-byte_inicial;
+		printf("tamanho_instrucao[%d] = %d\n",line-1,byte_corrente-byte_inicial);
 		line++;
 		fscanf(myfp, " ");
 	}
-	printf("dump de codigo\n");
+	cod = codigo+sizeof(prologo);
+	
+	for(i=0;i<line;i++){
+	printf("testeeeeeeeeeeeeeeeeeeeeeeeee :%02x\n",cod[i]);
+		if(cod[i]== 0xeb){
+			//printf("testeeeeeeeeeeeeeeeeeeeeeeeee :%02x\n",cod[i]);
+			desvio_incondicional(cod,i,tamanho_instrucao);
+			
+			
+		}
+		cod+=(tamanho_instrucao[i]-1);
+		
+	}
+	printf("dump de codigo :%d\n",byte_corrente);
 	dump(codigo,byte_corrente);
 	f = (funcp)codigo;
 	return f;
