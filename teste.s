@@ -1,27 +1,32 @@
-	.text				/*aaa*/		
-	.globl foo			/*a*/
+	.text					
+	.globl foo			
 
-	foo:				/*a*/
-	pushq %rbp			/*a*/
-	movq %rsp,%rbp			/*a*/
-	subq $16,%rsp			/*a*/
+	foo:				
+	pushq %rbp			
+	movq %rsp,%rbp			
+	subq $16,%rsp			
 	
-	movl $5,-4(%rbp)
-	cmpl $0,-4(%rbp)
-	jl L2
-	je L3
-	L2:
-	movl $67,-12(%rbp)
-	movl -12(%rbp),%ecx
-	movl %ecx,-8(%rbp)
-	L4:
-	movl -8(%rbp),%eax
+	jmp A
+	
+	movl $1, -4(%rbp)
+	movl -4(%rbp),%eax
 	leave
 	ret
-	L3:
-	movl -4(%rbp),%ecx
-	movl %ecx,-8(%rbp)
-	jmp L4 
+	
+	movl $2, -4(%rbp)
+	movl -4(%rbp),%eax
+	leave
+	ret
+
+	movl $10, -4(%rbp)
+	cmpl $0, -4(%rbp)
+	jl L1
+	je L2
+
+	movl $5, -4(%rbp)
+	movl -4(%rbp),%eax
+	leave
+	ret
 	
 
 
