@@ -43,7 +43,7 @@ void preenche_dist(Tabela_jmp x,unsigned char **pos_linha, unsigned char *codigo
 	if(x.origem == line){
 		diferenca = pos_linha[x.destino] - pos_linha[x.origem];
 	}
-	printf("distancia = %d", diferenca);
+	printf("distancia = %d\n", diferenca);
 	unsigned char *p = (unsigned char *) &diferenca; 
 	for (i = 0; i<4 ;i++){
 
@@ -263,11 +263,11 @@ funcp geracod(FILE *myfp){
 	}
 	memcpy(codigo,prologo,sizeof(prologo));
 	byte_corrente += sizeof(prologo);
-	pos_linha[0] = cod;
+	pos_linha[0] = codigo;
 	
 	while ( (c = fgetc(myfp)) != EOF ){
 		printf("byte_inicial = %d\n",byte_corrente);
-		pos_linha[line] = cod+byte_corrente;
+		pos_linha[line] = codigo+byte_corrente;
 		switch(c){
 
 			
@@ -385,8 +385,10 @@ funcp geracod(FILE *myfp){
 						}
 					}
 				}
-				codigo[byte_corrente] = 0x00;byte_corrente++;//jl n1
-				codigo[byte_corrente] = 0x0f;byte_corrente++;
+				codigo[byte_corrente] = 0x00;byte_corrente++;// pq esta comparando com zero
+				
+				
+				codigo[byte_corrente] = 0x0f;byte_corrente++;//jl n1
 				codigo[byte_corrente] = 0x8c;byte_corrente++;
 				tbl[jmps].poscod = byte_corrente;
 				tbl[jmps].origem = line;
@@ -396,7 +398,9 @@ funcp geracod(FILE *myfp){
 				codigo[byte_corrente] = 0x00;byte_corrente++;
 				codigo[byte_corrente] = 0x00;byte_corrente++;
 				codigo[byte_corrente] = 0x00;byte_corrente++;
-				codigo[byte_corrente] = 0x0f;byte_corrente++;//le n2
+
+
+				codigo[byte_corrente] = 0x0f;byte_corrente++;//je n2
 				codigo[byte_corrente] = 0x84;byte_corrente++;
 				tbl[jmps].poscod = byte_corrente;
 				tbl[jmps].origem = line;
@@ -432,10 +436,13 @@ funcp geracod(FILE *myfp){
 		line++;
 		fscanf(myfp, " ");
 	}
+	pos_linha[line] = codigo+byte_corrente;
+	memcpy(codigo+byte_corrente,epilogo,sizeof(epilogo));
+	byte_corrente += sizeof(epilogo);
 	cod = codigo+sizeof(prologo);
-	printf(" posição de cada linha no codigo");
+	printf("posição de cada linha no codigo\n");
 	for(i=0;i<line;i++){	
-		printf("%d\n",pos_linha[i]);
+		printf("%d - %d\n",i,pos_linha[i]);
 	}
 	for(i=0;i<jmps;i++){
 		printf("posicao jmp = %d\n",tbl[i].poscod);
@@ -461,7 +468,7 @@ int main(/* int argc, char **argv*/){
 
 	}
 	sb = geracod(myfp);
-	res = (*sb)(12,123);
+	res = (*sb)(12,0);
 	printf(" retorno da funcao sb = %d\n",res);
 	return 0;
 }
