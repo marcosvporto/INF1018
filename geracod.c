@@ -13,6 +13,7 @@ typedef struct tabela_jmp{//tabela onde será gravada a ocorrencia de jmps
 	int poscod ; // posição no vetor de codigo onde se devemos preencher com a distancia
 	int origem;//linha onde está o desvio
 	int destino;// linha onde eu quero ir
+	int jumpless;
 	
 }Tabela_jmp;
 
@@ -42,6 +43,9 @@ void preenche_dist(Tabela_jmp x,unsigned char **pos_linha, unsigned char *codigo
 	
 	if(x.origem == line){
 		diferenca = pos_linha[x.destino] - pos_linha[x.origem];
+	}
+	if(x.jumpless == 1){
+		diferenca +=6; 
 	}
 	printf("distancia = %d\n", diferenca);
 	unsigned char *p = (unsigned char *) &diferenca; 
@@ -359,8 +363,7 @@ funcp geracod(FILE *myfp){
 				if(fscanf(myfp, "f %c%d %d %d", &var0, &idx0, &n1, &n2) != 4)
 					error("comando invalido", line);
 				printf("%d if %c%d %d %d\n", line, var0, idx0, n1, n2);
-				codigo[byte_corrente] = 0x83;
-				byte_corrente++;				
+				codigo[byte_corrente] = 0x83;byte_corrente++;				
 				if(var0=='p'){//analisa parametro
 					codigo[byte_corrente] = idx0 == 1? 0xff:0xfe;byte_corrente++;	 
 				}
@@ -368,43 +371,74 @@ funcp geracod(FILE *myfp){
 					codigo[byte_corrente] = 0x7d;byte_corrente++;
 					switch(idx0){
 						case 1:{
-							codigo[byte_corrente] = retv1[0];byte_corrente++;
+							codigo[byte_corrente] = 0xfc;byte_corrente++;
 							break;
 						}
 						case 2:{
-							codigo[byte_corrente] = retv2[0];byte_corrente++;
+							codigo[byte_corrente] = 0xf8;byte_corrente++;
 							break;
 						}
 						case 3:{
-							codigo[byte_corrente] = retv3[0];byte_corrente++;
+							codigo[byte_corrente] = 0xf4;byte_corrente++;
 							break;
 						}
 						case 4:{
-							codigo[byte_corrente] = retv4[0];byte_corrente++;
+							codigo[byte_corrente] = 0xf0;byte_corrente++;
 							break;
 						}
 					}
 				}
 				codigo[byte_corrente] = 0x00;byte_corrente++;// pq esta comparando com zero
-				
-				
+		
+
 				codigo[byte_corrente] = 0x0f;byte_corrente++;//jl n1
 				codigo[byte_corrente] = 0x8c;byte_corrente++;
 				tbl[jmps].poscod = byte_corrente;
 				tbl[jmps].origem = line;
 				tbl[jmps].destino = n1;
+				tbl[jmps].jumpless = 1;
 				jmps++;
 				codigo[byte_corrente] = 0x00;byte_corrente++;
 				codigo[byte_corrente] = 0x00;byte_corrente++;
 				codigo[byte_corrente] = 0x00;byte_corrente++;
 				codigo[byte_corrente] = 0x00;byte_corrente++;
+								
+				 
+				/***************************************************************************************************************************************
+				codigo[byte_corrente] = 0x83;byte_corrente++;
+				if(var0=='p'){//analisa parametro
+					codigo[byte_corrente] = idx0 == 1? 0xff:0xfe;byte_corrente++;	 
+				}
+				else{//analisa variavel
+					codigo[byte_corrente] = 0x7d;byte_corrente++;
+					switch(idx0){
+						case 1:{
+							codigo[byte_corrente] = 0xfc;byte_corrente++;
+							break;
+						}
+						case 2:{
+							codigo[byte_corrente] = 0xf8;byte_corrente++;
+							break;
+						}
+						case 3:{
+							codigo[byte_corrente] = 0xf4;byte_corrente++;
+							break;
+						}
+						case 4:{
+							codigo[byte_corrente] = 0xf0;byte_corrente++;
+							break;
+						}
+					}
+				}
+				codigo[byte_corrente] = 0x00;byte_corrente++;// pq esta comparando com zero
 
-
+				/***************************************************************************************************************************************/
 				codigo[byte_corrente] = 0x0f;byte_corrente++;//je n2
 				codigo[byte_corrente] = 0x84;byte_corrente++;
 				tbl[jmps].poscod = byte_corrente;
 				tbl[jmps].origem = line;
 				tbl[jmps].destino = n2;
+				tbl[jmps].jumpless = 0;
 				jmps++;
 				codigo[byte_corrente] = 0x00;byte_corrente++;
 				codigo[byte_corrente] = 0x00;byte_corrente++;
@@ -421,6 +455,7 @@ funcp geracod(FILE *myfp){
 				tbl[jmps].poscod = byte_corrente;
 				tbl[jmps].origem = line;
 				tbl[jmps].destino = n1;
+				tbl[jmps].jumpless = 0;
 				jmps++;
 				codigo[byte_corrente] = 0x00;byte_corrente++;
 				codigo[byte_corrente] = 0x00;byte_corrente++;
@@ -439,8 +474,8 @@ funcp geracod(FILE *myfp){
 	pos_linha[line] = codigo+byte_corrente;
 	memcpy(codigo+byte_corrente,epilogo,sizeof(epilogo));
 	byte_corrente += sizeof(epilogo);
-	cod = codigo+sizeof(prologo);
-	printf("posição de cada linha no codigo\n");
+	//cod = codigo+sizeof(prologo);
+	//printf("posição de cada linha no codigo\n");
 	for(i=0;i<line;i++){	
 		printf("%d - %d\n",i,pos_linha[i]);
 	}
@@ -468,7 +503,7 @@ int main(/* int argc, char **argv*/){
 
 	}
 	sb = geracod(myfp);
-	res = (*sb)(12,0);
+	res = (*sb)(-10,10);
 	printf(" retorno da funcao sb = %d\n",res);
 	return 0;
 }
